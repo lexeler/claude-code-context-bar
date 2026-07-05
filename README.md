@@ -43,6 +43,10 @@ The installer drops `context-bar.sh` into your Claude config dir
 `settings.json`, backing up any existing file first and preserving your other
 settings.
 
+**Already have a status line?** Claude Code supports only one, so context-bar
+replaces it — but it prints which one it replaced and your timestamped backup
+keeps the old configuration, so you can revert any time.
+
 ## Configuration
 
 | Variable | Default | Description |
@@ -63,6 +67,25 @@ Set it in the `statusLine` command, e.g. `CCTX_WIDTH=24 ~/.claude/context-bar.sh
    }
    ```
 3. Restart Claude Code.
+
+## Safety
+
+The installer is careful with the one thing it changes — your `settings.json`:
+
+- It **verifies the download** (non-empty, correct shebang, valid Bash syntax)
+  *before* installing, so a broken or truncated file never replaces a working one.
+- The whole script is wrapped in a function invoked only at the end, so a
+  half-downloaded `curl | bash` runs nothing.
+- Your existing `settings.json` is **backed up with a timestamp**, written
+  **atomically**, and **all your other keys are preserved** — only `statusLine`
+  is added.
+- If `settings.json` isn't valid JSON it's moved aside to `.broken`; if it's
+  valid JSON but not an object, it's **left untouched** and you're told what to add.
+- Nothing outside your Claude config dir is touched, and **no `sudo`** is used.
+- Uninstall removes the `statusLine` entry **only if it's context-bar's** — a
+  status line you set for something else is left alone.
+
+All of the above is covered by the scenario tests.
 
 ## How it works
 

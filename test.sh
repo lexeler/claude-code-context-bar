@@ -19,8 +19,8 @@ run(){ # $1=json $2=env-assignments -> raw output
 strip(){ sed 's/\x1b\[[0-9;]*m//g'; }
 vis(){ strip | tr -d '\n' | wc -m | tr -d ' '; }        # visible columns
 countc(){ grep -o "$2" <<<"$1" | wc -l | tr -d ' '; }   # count colour occurrences
-ctx_filled(){ echo $(( 32 - $(countc "$1" "$CTX_DIM") )); }
-lim_filled(){ echo $(( 20 - $(countc "$1" "$LIM_DIM") )); }   # default 10 cells -> 20 sub
+ctx_filled(){ echo $(( 16 - $(countc "$1" "$CTX_DIM") )); }
+lim_filled(){ echo $(( 10 - $(countc "$1" "$LIM_DIM") )); }   # default 10 cells -> 20 sub
 nums(){ grep -oE '[0-9]+%' <<<"$(strip <<<"$1")" | tr -d '%'; }
 
 NOW=$(date +%s); R=$(( NOW + 3*3600 + 12*60 ))   # 3:12 from now
@@ -31,7 +31,7 @@ pay(){ # $1=ctx% $2=5h%
 echo "── context bar ──"
 for p in 0 25 50 100; do
   o=$(run "$(pay $p 40)" "COLUMNS=104")
-  cf=$(ctx_filled "$o"); ef=$(( p*32/100 )); cn=$(nums "$o" | head -1)
+  cf=$(ctx_filled "$o"); ef=$(( p*16/100 )); cn=$(nums "$o" | head -1)
   [[ $cf -eq $ef && $cn == $p ]] && ok "context $p% (filled $cf/32)" || no "context $p%" "filled=$cf want=$ef, num=$cn"
 done
 o=$(run '{"context_window":{"used_percentage":31},"rate_limits":{"five_hour":{"used_percentage":10,"resets_at":'$R'}}}' "COLUMNS=104")
@@ -40,7 +40,7 @@ o=$(run '{"context_window":{"used_percentage":31},"rate_limits":{"five_hour":{"u
 echo "── 5h tracker ──"
 for p in 0 40 100; do
   o=$(run "$(pay 25 $p)" "COLUMNS=104")
-  lf=$(lim_filled "$o"); ef=$(( p*20/100 )); ln=$(nums "$o" | tail -1)
+  lf=$(lim_filled "$o"); ef=$(( p*10/100 )); ln=$(nums "$o" | tail -1)
   [[ $lf -eq $ef && $ln == $p ]] && ok "5h $p% (filled $lf/20)" || no "5h $p%" "filled=$lf want=$ef, num=$ln"
 done
 o=$(run "$(pay 25 40)" "COLUMNS=104")
@@ -55,14 +55,14 @@ t=$(run "$(mkr $((NOW+180)))" "COLUMNS=104" | strip | grep -oE '[0-9]+:[0-9]{2}'
 t=$(run "$(mkr $((NOW-500)))" "COLUMNS=104" | strip | grep -oE '[0-9]+:[0-9]{2}' | head -1)
 [[ $t == 0:00 ]] && ok "clock clamps past reset -> 0:00" || no "clock past" "$t"
 
-echo "── warning tint (grey -> red near limit) ──"
+echo "── 5h grey gradient (grayscale, dark->light, low-key) ──"
 # the 5h bar's bg colours are the LAST 10 (context bar has 16 before it)
-lowc=$(run "$(pay 25 30)" "COLUMNS=104" | grep -oE '48;2;[0-9]+;[0-9]+;[0-9]+' | tail -10 | grep -v "$LIM_DIM" | head -1)
-hic=$(run "$(pay 25 96)" "COLUMNS=104" | grep -oE '48;2;[0-9]+;[0-9]+;[0-9]+' | tail -10 | grep -v "$LIM_DIM" | head -1)
-lr=$(cut -d';' -f3 <<<"$lowc"); lg=$(cut -d';' -f4 <<<"$lowc")
-hr=$(cut -d';' -f3 <<<"$hic"); hg=$(cut -d';' -f4 <<<"$hic")
-[[ $(( lr>lg?lr-lg:lg-lr )) -le 12 ]] && ok "5h 30% is grey (R≈G: $lr,$lg)" || no "grey" "$lowc"
-[[ $(( hr-hg )) -ge 40 ]] && ok "5h 96% reddens (R≫G: $hr,$hg)" || no "warn red" "$hic"
+g5=$(run "$(pay 25 80)" "COLUMNS=104" | grep -oE '48;2;[0-9]+;[0-9]+;[0-9]+' | tail -10 | grep -v "$LIM_DIM")
+first=$(head -1 <<<"$g5"); last=$(tail -1 <<<"$g5")
+fr=$(cut -d';' -f3 <<<"$first"); fg=$(cut -d';' -f4 <<<"$first")
+er=$(cut -d';' -f3 <<<"$last");  eg=$(cut -d';' -f4 <<<"$last")
+[[ $(( fr>fg?fr-fg:fg-fr )) -le 4 && $(( er>eg?er-eg:eg-er )) -le 4 ]] && ok "5h is grayscale (R≈G, no colour)" || no "grayscale" "$first / $last"
+[[ $er -gt $fr ]] && ok "5h gradient dark->light ($fr -> $er)" || no "gradient dir" "$fr -> $er"
 
 echo "── right alignment ──"
 w=$(run "$(pay 25 40)" "COLUMNS=104" | vis)

@@ -14,8 +14,10 @@
 # Pure Bash; the only external call is one tiny `date` for the reset clock
 # (fork-free on Bash 4.2+).
 #
-# Env: CCTX_WIDTH (context cells, default 16), CCTX_LIMIT (0 = hide 5h tracker),
-#      CCTX_LIMIT_WIDTH (5h cells, default 10), CCTX_RMARGIN (right margin, 6).
+# Env: CCTX_THEME (context gradient: blue-red|green-red|cyan-magenta|blue-black|
+#      teal-orange, default blue-red), CCTX_WIDTH (context cells, default 16),
+#      CCTX_LIMIT (0 = hide 5h tracker), CCTX_LIMIT_WIDTH (5h cells, default 10),
+#      CCTX_RMARGIN (right margin, 6).
 #
 # https://github.com/lexeler/claude-code-context-bar   (MIT)
 
@@ -49,7 +51,7 @@ build_bar() {
     if (( i < filled )); then
       if (( cells > 1 )); then t=$(( i * 100 / (cells - 1) )); else t=0; fi
       if (( mode == 0 )); then
-        col="$(( 40 + 110*t/100 ));$(( 170 - 170*t/100 ));$(( 255 - 235*t/100 ))"
+        col="$(( SR + (ER-SR)*t/100 ));$(( SG + (EG-SG)*t/100 ));$(( SB + (EB-SB)*t/100 ))"
       else
         g=$(( 72 + 48*t/100 ))           # muted grey ramp dark->light (no colour, low-key)
         col="${g};${g};$(( g + 6 ))"
@@ -62,10 +64,19 @@ build_bar() {
   BAR="${out}${reset}"
 }
 
-# COL = "r;g;b" for the context ramp at $1(0..100)
-ctx_rgb() { COL="$(( 40 + 110*$1/100 ));$(( 170 - 170*$1/100 ));$(( 255 - 235*$1/100 ))"; }
+# COL = "r;g;b" for the context ramp at $1(0..100), using the chosen theme
+ctx_rgb() { COL="$(( SR + (ER-SR)*$1/100 ));$(( SG + (EG-SG)*$1/100 ));$(( SB + (EB-SB)*$1/100 ))"; }
 
 # ---- LEFT: context window --------------------------------------------------
+# Gradient theme — start RGB (SR,SG,SB) fades to end RGB (ER,EG,EB) as it fills.
+case "${CCTX_THEME:-blue-red}" in
+  green-red)    SR=46;  SG=204; SB=113; ER=200; EG=20;  EB=20  ;;
+  cyan-magenta) SR=0;   SG=200; SB=220; ER=220; EG=0;   EB=140 ;;
+  blue-black)   SR=60;  SG=140; SB=255; ER=20;  EG=20;  EB=35  ;;
+  teal-orange)  SR=20;  SG=180; SB=170; ER=255; EG=120; EB=0   ;;
+  *)            SR=40;  SG=170; SB=255; ER=150; EG=0;   EB=20  ;;  # blue-red (default)
+esac
+
 cw=$json
 [[ $json == *'"context_window"'* ]] && cw=${json#*\"context_window\"}
 pct_in "$cw"; num=$PCT

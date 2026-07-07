@@ -55,6 +55,23 @@ other settings.
 replaces it — it prints which one it replaced, and your timestamped backup keeps
 the old configuration so you can revert any time.
 
+## Gradient themes
+
+Pick a colour for the context bar by putting `CCTX_THEME=<name>` **before `bash`**:
+
+```bash
+# blue-red (default)
+curl -fsSL https://raw.githubusercontent.com/lexeler/claude-code-context-bar/main/install.sh | bash
+# green-red
+curl -fsSL https://raw.githubusercontent.com/lexeler/claude-code-context-bar/main/install.sh | CCTX_THEME=green-red bash
+# cyan-magenta
+curl -fsSL https://raw.githubusercontent.com/lexeler/claude-code-context-bar/main/install.sh | CCTX_THEME=cyan-magenta bash
+# blue-black
+curl -fsSL https://raw.githubusercontent.com/lexeler/claude-code-context-bar/main/install.sh | CCTX_THEME=blue-black bash
+# teal-orange
+curl -fsSL https://raw.githubusercontent.com/lexeler/claude-code-context-bar/main/install.sh | CCTX_THEME=teal-orange bash
+```
+
 ## Configuration
 
 Set these as env vars at install time (baked into the status line command), e.g.
@@ -62,6 +79,7 @@ Set these as env vars at install time (baked into the status line command), e.g.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `CCTX_THEME` | `blue-red` | Context gradient: `blue-red`, `green-red`, `cyan-magenta`, `blue-black`, `teal-orange`. |
 | `CCTX_LIMIT` | on | Set to `0` to hide the 5-hour rate-limit tracker (same as `--no-limit`). |
 | `CCTX_WIDTH` | `16` | Context bar cells (one colour step each; widen for a smoother gradient). |
 | `CCTX_LIMIT_WIDTH` | `10` | 5-hour bar cells. |

@@ -62,6 +62,7 @@ main() {
   # Build the status line command, baking in any chosen options as env prefixes.
   local opts=""
   (( limit == 0 ))               && opts+="CCTX_LIMIT=0 "
+  [ -n "${CCTX_THEME:-}" ]       && opts+="CCTX_THEME=${CCTX_THEME} "
   [ -n "${CCTX_WIDTH:-}" ]       && opts+="CCTX_WIDTH=${CCTX_WIDTH} "
   [ -n "${CCTX_LIMIT_WIDTH:-}" ] && opts+="CCTX_LIMIT_WIDTH=${CCTX_LIMIT_WIDTH} "
   [ -n "${CCTX_RMARGIN:-}" ]     && opts+="CCTX_RMARGIN=${CCTX_RMARGIN} "

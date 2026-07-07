@@ -57,18 +57,46 @@ the old configuration so you can revert any time.
 
 ## Gradient themes
 
-Pick a colour for the context bar by putting `CCTX_THEME=<name>` **before `bash`**:
+Five palettes for the context bar. Copy the command under the one you like and run
+it (`CCTX_THEME` goes **before `bash`**), then restart Claude Code.
+
+### blue-black
+
+![blue-black](preview/blue-black.svg)
 
 ```bash
-# blue-red (default)
-curl -fsSL https://raw.githubusercontent.com/lexeler/claude-code-context-bar/main/install.sh | bash
-# green-red
-curl -fsSL https://raw.githubusercontent.com/lexeler/claude-code-context-bar/main/install.sh | CCTX_THEME=green-red bash
-# cyan-magenta
-curl -fsSL https://raw.githubusercontent.com/lexeler/claude-code-context-bar/main/install.sh | CCTX_THEME=cyan-magenta bash
-# blue-black
 curl -fsSL https://raw.githubusercontent.com/lexeler/claude-code-context-bar/main/install.sh | CCTX_THEME=blue-black bash
-# teal-orange
+```
+
+### blue-red — default
+
+![blue-red](preview/blue-red.svg)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lexeler/claude-code-context-bar/main/install.sh | bash
+```
+
+### green-red
+
+![green-red](preview/green-red.svg)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lexeler/claude-code-context-bar/main/install.sh | CCTX_THEME=green-red bash
+```
+
+### cyan-magenta
+
+![cyan-magenta](preview/cyan-magenta.svg)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lexeler/claude-code-context-bar/main/install.sh | CCTX_THEME=cyan-magenta bash
+```
+
+### teal-orange
+
+![teal-orange](preview/teal-orange.svg)
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/lexeler/claude-code-context-bar/main/install.sh | CCTX_THEME=teal-orange bash
 ```
 

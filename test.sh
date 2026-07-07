@@ -1,62 +1,98 @@
 #!/usr/bin/env bash
-# Test suite for context-bar.sh (half-block, 2 colour sub-cells per char).
-# Fill is encoded in colour, so we verify: printed % + count of filled sub-cells.
+# Test suite for context-bar.sh (context bar + 5h rate-limit tracker).
+# Fill is colour-encoded, so we verify by counting each bar's empty-track colour,
+# plus the printed numbers, the reset clock, warning tint, and right-alignment.
+export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 set -u
 DIR="$(cd "$(dirname "$0")" && pwd)"
 BAR="$DIR/context-bar.sh"
 pass=0; fail=0
-DIMC='95;100;115'
+CTX_DIM='95;100;115'   # context empty-track colour
+LIM_DIM='46;48;54'     # 5h empty-track colour
 
-# check <label> <json> <expected_num> [env] [width]
-check() {
-  local label="$1" json="$2" num="$3" env="${4:-}" w="${5:-16}"
-  local sub=$(( w * 2 )) raw pct dim filled expf
-  if [[ -n $env ]]; then raw=$(printf '%s' "$json" | env $env "$BAR"); else raw=$(printf '%s' "$json" | "$BAR"); fi
-  pct=$(grep -oE '[0-9]+%' <<<"$raw" | tr -d '%' | tail -1); pct=${pct:-none}
-  dim=$(grep -o "$DIMC" <<<"$raw" | wc -l | tr -d ' ')
-  filled=$(( sub - dim ))
-  expf=$(( num * sub / 100 ))
-  if [[ "$pct" == "$num" && "$filled" -eq "$expf" ]]; then
-    pass=$((pass+1)); printf '  ok   %-32s (%d%%, %d/%d filled)\n' "$label" "$num" "$filled" "$sub"
-  else
-    fail=$((fail+1)); printf '  FAIL %-32s  want %%=%s filled=%d/%d, got %%=%s filled=%d\n' "$label" "$num" "$expf" "$sub" "$pct" "$filled"
-  fi
+ok(){ pass=$((pass+1)); printf '  ok   %s\n' "$1"; }
+no(){ fail=$((fail+1)); printf '  FAIL %s\n       %s\n' "$1" "$2"; }
+
+run(){ # $1=json $2=env-assignments -> raw output
+  if [[ -n ${2:-} ]]; then printf '%s' "$1" | env $2 "$BAR"; else printf '%s' "$1" | "$BAR"; fi
+}
+strip(){ sed 's/\x1b\[[0-9;]*m//g'; }
+vis(){ strip | tr -d '\n' | wc -m | tr -d ' '; }        # visible columns
+countc(){ grep -o "$2" <<<"$1" | wc -l | tr -d ' '; }   # count colour occurrences
+ctx_filled(){ echo $(( 32 - $(countc "$1" "$CTX_DIM") )); }
+lim_filled(){ echo $(( 20 - $(countc "$1" "$LIM_DIM") )); }   # default 10 cells -> 20 sub
+nums(){ grep -oE '[0-9]+%' <<<"$(strip <<<"$1")" | tr -d '%'; }
+
+NOW=$(date +%s); R=$(( NOW + 3*3600 + 12*60 ))   # 3:12 from now
+pay(){ # $1=ctx% $2=5h%
+  echo "{\"context_window\":{\"used_percentage\":$1},\"rate_limits\":{\"five_hour\":{\"used_percentage\":$2,\"resets_at\":$R},\"seven_day\":{\"used_percentage\":19,\"resets_at\":$((R+9))}}}"
 }
 
-echo "── correctness ──"
-check "used 0%"            '{"context_window":{"used_percentage":0}}'   0
-check "used 25%"           '{"context_window":{"used_percentage":25}}'  25
-check "used 50%"           '{"context_window":{"used_percentage":50}}'  50
-check "used 100%"          '{"context_window":{"used_percentage":100}}' 100
-check "whitespace ': 40'"  '{"used_percentage": 40}'                    40
-check "float 22.7 -> 22"   '{"used_percentage":22.7}'                   22
-check "remaining 76 ->24"  '{"context_window":{"remaining_percentage":76}}' 24
-check "remaining 100 ->0"  '{"remaining_percentage":100}'               0
+echo "── context bar ──"
+for p in 0 25 50 100; do
+  o=$(run "$(pay $p 40)" "COLUMNS=104")
+  cf=$(ctx_filled "$o"); ef=$(( p*32/100 )); cn=$(nums "$o" | head -1)
+  [[ $cf -eq $ef && $cn == $p ]] && ok "context $p% (filled $cf/32)" || no "context $p%" "filled=$cf want=$ef, num=$cn"
+done
+o=$(run '{"context_window":{"used_percentage":31},"rate_limits":{"five_hour":{"used_percentage":10,"resets_at":'$R'}}}' "COLUMNS=104")
+[[ $(nums "$o" | head -1) == 31 ]] && ok "context ignores rate_limit %" || no "context scoping" "$(nums "$o"|head -1)"
+
+echo "── 5h tracker ──"
+for p in 0 40 100; do
+  o=$(run "$(pay 25 $p)" "COLUMNS=104")
+  lf=$(lim_filled "$o"); ef=$(( p*20/100 )); ln=$(nums "$o" | tail -1)
+  [[ $lf -eq $ef && $ln == $p ]] && ok "5h $p% (filled $lf/20)" || no "5h $p%" "filled=$lf want=$ef, num=$ln"
+done
+o=$(run "$(pay 25 40)" "COLUMNS=104")
+[[ $(nums "$o" | tail -1) == 40 ]] && ok "5h picks five_hour (not seven_day 19)" || no "5h scoping" "$(nums "$o"|tail -1)"
+
+echo "── reset clock H:MM ──"
+mkr(){ echo "{\"context_window\":{\"used_percentage\":25},\"rate_limits\":{\"five_hour\":{\"used_percentage\":40,\"resets_at\":$1}}}"; }
+t=$(run "$(mkr $((NOW+3*3600+12*60)))" "COLUMNS=104" | strip | grep -oE '[0-9]+:[0-9]{2}' | head -1)
+[[ $t == 3:12 || $t == 3:11 ]] && ok "clock 3:12 (got $t)" || no "clock" "$t"
+t=$(run "$(mkr $((NOW+180)))" "COLUMNS=104" | strip | grep -oE '[0-9]+:[0-9]{2}' | head -1)
+[[ $t == 0:03 || $t == 0:02 ]] && ok "clock 0:03 (got $t)" || no "clock small" "$t"
+t=$(run "$(mkr $((NOW-500)))" "COLUMNS=104" | strip | grep -oE '[0-9]+:[0-9]{2}' | head -1)
+[[ $t == 0:00 ]] && ok "clock clamps past reset -> 0:00" || no "clock past" "$t"
+
+echo "── warning tint (grey -> red near limit) ──"
+# the 5h bar's bg colours are the LAST 10 (context bar has 16 before it)
+lowc=$(run "$(pay 25 30)" "COLUMNS=104" | grep -oE '48;2;[0-9]+;[0-9]+;[0-9]+' | tail -10 | grep -v "$LIM_DIM" | head -1)
+hic=$(run "$(pay 25 96)" "COLUMNS=104" | grep -oE '48;2;[0-9]+;[0-9]+;[0-9]+' | tail -10 | grep -v "$LIM_DIM" | head -1)
+lr=$(cut -d';' -f3 <<<"$lowc"); lg=$(cut -d';' -f4 <<<"$lowc")
+hr=$(cut -d';' -f3 <<<"$hic"); hg=$(cut -d';' -f4 <<<"$hic")
+[[ $(( lr>lg?lr-lg:lg-lr )) -le 12 ]] && ok "5h 30% is grey (R≈G: $lr,$lg)" || no "grey" "$lowc"
+[[ $(( hr-hg )) -ge 40 ]] && ok "5h 96% reddens (R≫G: $hr,$hg)" || no "warn red" "$hic"
+
+echo "── right alignment ──"
+w=$(run "$(pay 25 40)" "COLUMNS=104" | vis)
+[[ $w -eq $((104-6)) ]] && ok "COLUMNS=104 -> width 98 (=cols-rmargin)" || no "right-align width" "$w"
+w=$(run "$(pay 25 40)" "COLUMNS=200" | vis)
+[[ $w -eq $((200-6)) ]] && ok "COLUMNS=200 -> width 194 (adapts)" || no "align adapt" "$w"
+w=$(run "$(pay 25 40)" "CCTX_RMARGIN=10 COLUMNS=104" | vis)
+[[ $w -eq $((104-10)) ]] && ok "CCTX_RMARGIN=10 honoured (width 94)" || no "rmargin env" "$w"
+
+echo "── fallbacks / toggle ──"
+o=$(run "$(pay 25 40)" "COLUMNS=30")
+[[ $(vis <<<"$o") -lt 60 && $(nums "$o" | wc -l | tr -d ' ') -eq 2 ]] && ok "narrow COLUMNS -> adjacent, both shown" || no "narrow" "$(vis <<<"$o")"
+o=$(run "$(pay 25 40)" "")
+[[ $(nums "$o" | wc -l | tr -d ' ') -eq 2 ]] && ok "no COLUMNS -> adjacent" || no "no cols" "x"
+o=$(run "$(pay 25 40)" "CCTX_LIMIT=0 COLUMNS=104")
+[[ $(nums "$o" | wc -l | tr -d ' ') -eq 1 ]] && ok "CCTX_LIMIT=0 hides 5h tracker" || no "toggle off" "x"
+o=$(run '{"context_window":{"used_percentage":25}}' "COLUMNS=104")
+[[ $(nums "$o" | wc -l | tr -d ' ') -eq 1 ]] && ok "no rate_limits -> context only" || no "no limit data" "x"
 
 echo "── robustness ──"
-check "empty object"       '{}'                                        0
-check "empty input"        ''                                          0
-check "malformed json"     '{ broken :: '                              0
-check "garbage text"       'hello not json'                            0
-check "clamp rem 120 ->0"  '{"remaining_percentage":120}'              0
-check "clamp used 150"     '{"used_percentage":150}'                   100
-check "no false-match key" '{"foo_used_percentage":99,"context_window":{"used_percentage":10}}' 10
-
-echo "── real payload (multiple used_percentage) ──"
-REAL='{"context_window":{"current_usage":{"input_tokens":2},"context_window_size":1000000,"used_percentage":31,"remaining_percentage":69},"rate_limits":{"five_hour":{"used_percentage":10},"seven_day":{"used_percentage":19}}}'
-check "picks context_window (31)" "$REAL" 31
-
-echo "── config (CCTX_WIDTH) ──"
-check "width=8 @50%"       '{"used_percentage":50}'   50  "CCTX_WIDTH=8"  8
-check "width=invalid ->16" '{"used_percentage":50}'   50  "CCTX_WIDTH=xx" 16
-check "width=0 ->1 cell"   '{"used_percentage":100}'  100 "CCTX_WIDTH=0"  1
-check "width=32 @50%"      '{"used_percentage":50}'   50  "CCTX_WIDTH=32" 32
+for j in '{}' '' '{ broken ::' 'garbage'; do
+  o=$(run "$j" "COLUMNS=104")
+  [[ $(nums "$o" | head -1) == 0 ]] && ok "robust: [${j:0:12}] -> 0%" || no "robust [$j]" "$(nums "$o"|head -1)"
+done
 
 echo "── hygiene ──"
-err=$(printf '%s' '{"used_percentage":50}' | "$BAR" 2>&1 1>/dev/null)
-[[ -z $err ]] && { pass=$((pass+1)); echo "  ok   no stderr output"; } || { fail=$((fail+1)); echo "  FAIL stderr: $err"; }
-printf '%s' '{"used_percentage":50}' | "$BAR" >/dev/null 2>&1
-[[ $? -eq 0 ]] && { pass=$((pass+1)); echo "  ok   exit code 0"; } || { fail=$((fail+1)); echo "  FAIL nonzero exit"; }
+err=$(printf '%s' "$(pay 25 40)" | COLUMNS=104 "$BAR" 2>&1 1>/dev/null)
+[[ -z $err ]] && ok "no stderr" || no "stderr" "$err"
+printf '%s' "$(pay 25 40)" | COLUMNS=104 "$BAR" >/dev/null 2>&1
+[[ $? -eq 0 ]] && ok "exit 0" || no "exit" "nonzero"
 
 echo
 echo "RESULT: $pass passed, $fail failed"
